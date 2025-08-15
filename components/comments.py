@@ -26,9 +26,21 @@ def extract_mentions(text: str) -> list:
 def get_available_users() -> list:
     """Get list of users available for mentioning"""
     try:
-        return st.session_state.data.get('users', [])
-    except:
-        return ['Admin', 'Partner', 'User']  # Fallback
+        # First try to get from session state
+        users = st.session_state.data.get('users', [])
+        if users:
+            print(f"[MENTIONS] Found users in session state: {users}")
+            return users
+        
+        # Fallback: try to get from secrets or hardcoded list
+        fallback_users = ['Admin', 'Partner', 'Haris', 'Stan']
+        print(f"[MENTIONS] Using fallback users: {fallback_users}")
+        return fallback_users
+        
+    except Exception as e:
+        print(f"[MENTIONS ERROR] Error getting users: {e}")
+        # Last resort fallback
+        return ['Admin', 'Partner', 'User']
 
 def validate_mentions(mentions: list) -> list:
     """
@@ -290,6 +302,10 @@ def show_comment_form_with_mentions(entity_type: str, entity_id: str, entity_nam
         available_users = get_available_users()
         other_users = [user for user in available_users if user != st.session_state.current_user]
         
+        print(f"[DEBUG] Available users: {available_users}")
+        print(f"[DEBUG] Current user: {st.session_state.current_user}")
+        print(f"[DEBUG] Other users: {other_users}")
+        
         if other_users:
             st.markdown("**👥 Mention Someone:**")
             mention_cols = st.columns(len(other_users) + 1)
@@ -314,6 +330,10 @@ def show_comment_form_with_mentions(entity_type: str, entity_id: str, entity_nam
                     cleaned_text = re.sub(r'@\w+\s*', '', current_text).strip()
                     st.session_state[comment_key] = cleaned_text
                     st.rerun()
+        else:
+            st.info(f"Debug: No other users found. Available: {available_users}, Current: {st.session_state.current_user}")
+        
+        # Comment form)
         
         # Comment form
         with st.form(f"comment_form_{entity_type}_{entity_id}", clear_on_submit=True):

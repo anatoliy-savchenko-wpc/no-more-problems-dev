@@ -23,7 +23,7 @@ from email_handler import check_and_send_deadline_alerts
 
 # Configure page
 st.set_page_config(
-    page_title="Problem File Tracker",
+    page_title="DEV Problem File Tracker",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"

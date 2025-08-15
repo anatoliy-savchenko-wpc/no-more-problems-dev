@@ -269,14 +269,9 @@ def show_comments_section(entity_type: str, entity_id: str, entity_name: str):
 
 def show_comment_form_with_mentions(entity_type: str, entity_id: str, entity_name: str,
                                    file_owner: str, file_name: str, can_notify: bool):
-    """Display comment form with @mentions support"""
+    """Display comment form with @mentions support and user selection"""
     
     with st.expander("➕ Add New Comment", expanded=False):
-        # Show available users for mentions
-        available_users = get_available_users()
-        if len(available_users) > 1:
-            st.info(f"💡 **Tip:** Use @username to mention someone. Available users: {', '.join(['@' + user for user in available_users])}")
-        
         # Show notification status
         if can_notify:
             owner_email = get_user_email(file_owner)
@@ -286,14 +281,54 @@ def show_comment_form_with_mentions(entity_type: str, entity_id: str, entity_nam
         elif file_owner == st.session_state.current_user:
             st.info("ℹ️ You're commenting on your own file - no email notification needed")
         
+        # Initialize comment text in session state if not exists
+        comment_key = f"comment_draft_{entity_type}_{entity_id}"
+        if comment_key not in st.session_state:
+            st.session_state[comment_key] = ""
+        
+        # Mention selector section
+        available_users = get_available_users()
+        other_users = [user for user in available_users if user != st.session_state.current_user]
+        
+        if other_users:
+            st.markdown("**👥 Mention Someone:**")
+            mention_cols = st.columns(len(other_users) + 1)
+            
+            for i, user in enumerate(other_users):
+                with mention_cols[i]:
+                    if st.button(f"@{user}", key=f"mention_btn_{user}_{entity_type}_{entity_id}", 
+                                help=f"Add @{user} to your comment"):
+                        # Add mention to comment text
+                        current_text = st.session_state[comment_key]
+                        if current_text and not current_text.endswith(' '):
+                            current_text += " "
+                        st.session_state[comment_key] = current_text + f"@{user} "
+                        st.rerun()
+            
+            # Clear mentions button
+            with mention_cols[-1]:
+                if st.button("🗑️ Clear", key=f"clear_mentions_{entity_type}_{entity_id}",
+                           help="Clear all mentions from comment"):
+                    # Remove all @mentions from the text
+                    current_text = st.session_state[comment_key]
+                    cleaned_text = re.sub(r'@\w+\s*', '', current_text).strip()
+                    st.session_state[comment_key] = cleaned_text
+                    st.rerun()
+        
         # Comment form
         with st.form(f"comment_form_{entity_type}_{entity_id}", clear_on_submit=True):
             comment_text = st.text_area(
                 "Write your comment:",
-                placeholder="Share your thoughts... Use @username to mention someone!",
+                value=st.session_state[comment_key],
+                placeholder="Share your thoughts... Click the buttons above to mention someone!",
                 key=f"comment_input_{entity_type}_{entity_id}",
-                help="You can mention other users by typing @username in your comment"
+                help="Use the mention buttons above or type @username manually",
+                height=100
             )
+            
+            # Update session state with current text
+            if comment_text != st.session_state[comment_key]:
+                st.session_state[comment_key] = comment_text
             
             # Preview mentions if any
             if comment_text:
@@ -302,16 +337,21 @@ def show_comment_form_with_mentions(entity_type: str, entity_id: str, entity_nam
                     valid_mentions = validate_mentions(mentions)
                     invalid_mentions = [m for m in mentions if m not in [v.lower() for v in valid_mentions]]
                     
-                    if valid_mentions:
-                        st.success(f"✅ Will notify: {', '.join(valid_mentions)}")
-                    
-                    if invalid_mentions:
-                        st.warning(f"⚠️ Unknown users: {', '.join(invalid_mentions)}")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if valid_mentions:
+                            st.success(f"✅ Will notify: {', '.join(valid_mentions)}")
+                    with col2:
+                        if invalid_mentions:
+                            st.warning(f"⚠️ Unknown users: {', '.join(invalid_mentions)}")
             
             submitted = st.form_submit_button("💬 Post Comment", use_container_width=True)
             
             if submitted:
                 if comment_text and comment_text.strip():
+                    # Clear the draft after successful submission
+                    st.session_state[comment_key] = ""
+                    
                     handle_comment_submission_with_mentions(
                         comment_text=comment_text.strip(),
                         entity_type=entity_type,
@@ -555,24 +595,49 @@ def display_comment_with_replies(comment_id: str, comment: dict, all_comments: d
 
 def show_reply_form_with_mentions(parent_id: str, entity_type: str, entity_id: str,
                                  entity_name: str, file_owner: str, file_name: str):
-    """Show reply form with @mentions support"""
+    """Show reply form with @mentions support and user selection"""
     
     can_notify = check_notification_conditions(file_owner)
+    
+    # Initialize reply text in session state if not exists
+    reply_key = f"reply_draft_{parent_id}"
+    if reply_key not in st.session_state:
+        st.session_state[reply_key] = ""
     
     with st.form(f"reply_form_{parent_id}", clear_on_submit=True):
         if can_notify:
             st.info(f"📧 Your reply will notify {file_owner}")
         
-        # Show available users for mentions
+        # Mention selector for replies
         available_users = get_available_users()
-        if len(available_users) > 1:
-            st.caption(f"💡 Use @username to mention: {', '.join(['@' + user for user in available_users])}")
+        other_users = [user for user in available_users if user != st.session_state.current_user]
+        
+        if other_users:
+            st.markdown("**👥 Mention in Reply:**")
+            mention_cols = st.columns(min(len(other_users), 4))  # Limit to 4 columns for space
+            
+            for i, user in enumerate(other_users[:4]):  # Show max 4 users
+                with mention_cols[i]:
+                    if st.button(f"@{user}", key=f"reply_mention_{user}_{parent_id}", 
+                                help=f"Add @{user} to your reply"):
+                        # Add mention to reply text
+                        current_text = st.session_state[reply_key]
+                        if current_text and not current_text.endswith(' '):
+                            current_text += " "
+                        st.session_state[reply_key] = current_text + f"@{user} "
+                        st.rerun()
         
         reply_text = st.text_area(
             "Write your reply:", 
+            value=st.session_state[reply_key],
             key=f"reply_input_{parent_id}",
-            placeholder="Your reply... Use @username to mention someone!"
+            placeholder="Your reply... Click buttons above to mention someone!",
+            height=80
         )
+        
+        # Update session state with current text
+        if reply_text != st.session_state[reply_key]:
+            st.session_state[reply_key] = reply_text
         
         # Preview mentions in reply
         if reply_text:
@@ -587,6 +652,9 @@ def show_reply_form_with_mentions(parent_id: str, entity_type: str, entity_id: s
         with col1:
             if st.form_submit_button("Post Reply", use_container_width=True):
                 if reply_text and reply_text.strip():
+                    # Clear the draft after successful submission
+                    st.session_state[reply_key] = ""
+                    
                     handle_comment_submission_with_mentions(
                         comment_text=reply_text.strip(),
                         entity_type=entity_type,
@@ -603,6 +671,8 @@ def show_reply_form_with_mentions(parent_id: str, entity_type: str, entity_id: s
         
         with col2:
             if st.form_submit_button("Cancel", use_container_width=True):
+                # Clear the draft when canceling
+                st.session_state[reply_key] = ""
                 del st.session_state[f"replying_to_{parent_id}"]
                 st.rerun()
 

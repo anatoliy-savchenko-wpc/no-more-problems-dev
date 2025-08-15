@@ -1,5 +1,3 @@
-# Miscellaneous
-*.txt
 
 # Credentials and sensitive data
 credentials.toml
